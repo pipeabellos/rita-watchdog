@@ -1,0 +1,12 @@
+# Config with sensitive data
+config.env
+
+# Ignore local config overrides
+config.local.env
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
