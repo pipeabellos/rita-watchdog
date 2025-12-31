@@ -25,15 +25,18 @@ send_heartbeat() {
     local url="$1"
     local name="$2"
 
-    # Try 4G first, then WiFi
-    if curl --interface "$FOURG_INTERFACE" -s -o /dev/null -m 30 "$url" 2>/dev/null; then
+    # Try 4G first (fast timeout), then WiFi, then any route
+    if curl --interface "$FOURG_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null; then
         log "$name heartbeat sent via $FOURG_INTERFACE"
         return 0
-    elif curl --interface "$WIFI_INTERFACE" -s -o /dev/null -m 30 "$url" 2>/dev/null; then
-        log "$name heartbeat sent via $WIFI_INTERFACE"
+    elif curl --interface "$WIFI_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null; then
+        log "$name heartbeat sent via $WIFI_INTERFACE (4G fallback)"
+        return 0
+    elif curl -s -o /dev/null -m 10 "$url" 2>/dev/null; then
+        log "$name heartbeat sent via auto-route (both interfaces failed)"
         return 0
     else
-        log "Warning: Failed to send $name heartbeat"
+        log "Warning: Failed to send $name heartbeat (no connectivity)"
         return 1
     fi
 }
