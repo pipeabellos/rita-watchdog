@@ -24,31 +24,58 @@ log() {
 send_heartbeat() {
     local url="$1"
     local name="$2"
+    local curl_exit_code
 
     # Try 4G first (fast timeout), then WiFi, then any route
-    if curl --interface "$FOURG_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null; then
+    curl --interface "$FOURG_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
+    curl_exit_code=$?
+    if [ $curl_exit_code -eq 0 ]; then
         log "$name heartbeat sent via $FOURG_INTERFACE"
         return 0
-    elif curl --interface "$WIFI_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null; then
-        log "$name heartbeat sent via $WIFI_INTERFACE (4G fallback)"
-        return 0
-    elif curl -s -o /dev/null -m 10 "$url" 2>/dev/null; then
-        log "$name heartbeat sent via auto-route (both interfaces failed)"
-        return 0
-    else
-        log "Warning: Failed to send $name heartbeat (no connectivity)"
-        return 1
     fi
+
+    curl --interface "$WIFI_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
+    curl_exit_code=$?
+    if [ $curl_exit_code -eq 0 ]; then
+        log "$name heartbeat sent via $WIFI_INTERFACE"
+        return 0
+    fi
+
+    curl -s -o /dev/null -m 10 "$url" 2>/dev/null
+    curl_exit_code=$?
+    if [ $curl_exit_code -eq 0 ]; then
+        log "$name heartbeat sent via auto-route"
+        return 0
+    fi
+
+    # Log failure with curl exit code for debugging
+    # Exit codes: 6=DNS fail, 7=connect fail, 28=timeout, 35=SSL error
+    log "Warning: Failed to send $name heartbeat (curl exit: $curl_exit_code)"
+    return 1
 }
 
-# Check connectivity on specific interface
+# Check connectivity on specific interface using HTTP (more reliable than ping)
 check_interface() {
     local interface="$1"
-    if ping -c 2 -W 5 -I "$interface" "$CHECK_HOST" > /dev/null 2>&1; then
-        return 0  # Interface has internet
-    else
-        return 1  # Interface down
+
+    # Try HTTP check first (proves DNS + TCP + HTTP all work)
+    # Using http (not https) to a known endpoint for speed
+    if curl --interface "$interface" -s -o /dev/null -m 5 -w "%{http_code}" "http://connectivitycheck.gstatic.com/generate_204" 2>/dev/null | grep -q "204"; then
+        return 0  # Full HTTP connectivity works
     fi
+
+    # Fallback to HTTPS check (in case HTTP is blocked)
+    if curl --interface "$interface" -s -o /dev/null -m 5 "https://1.1.1.1" 2>/dev/null; then
+        return 0  # HTTPS to IP works (bypasses DNS)
+    fi
+
+    # Last resort: ping (ICMP might work when HTTP doesn't, but less useful)
+    if ping -c 2 -W 3 -I "$interface" "$CHECK_HOST" > /dev/null 2>&1; then
+        log "Warning: $interface ping works but HTTP failed - connectivity may be degraded"
+        return 0  # Partial connectivity
+    fi
+
+    return 1  # Interface down
 }
 
 # Try to reconnect WiFi
