@@ -27,21 +27,22 @@ send_heartbeat() {
     local curl_exit_code
 
     # Try 4G first (fast timeout), then WiFi, then any route
-    curl --interface "$FOURG_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
+    # Using -4 to force IPv4 (IPv6 often unreachable and causes delays)
+    curl -4 --interface "$FOURG_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
     curl_exit_code=$?
     if [ $curl_exit_code -eq 0 ]; then
         log "$name heartbeat sent via $FOURG_INTERFACE"
         return 0
     fi
 
-    curl --interface "$WIFI_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
+    curl -4 --interface "$WIFI_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
     curl_exit_code=$?
     if [ $curl_exit_code -eq 0 ]; then
         log "$name heartbeat sent via $WIFI_INTERFACE"
         return 0
     fi
 
-    curl -s -o /dev/null -m 10 "$url" 2>/dev/null
+    curl -4 -s -o /dev/null -m 10 "$url" 2>/dev/null
     curl_exit_code=$?
     if [ $curl_exit_code -eq 0 ]; then
         log "$name heartbeat sent via auto-route"
@@ -59,13 +60,13 @@ check_interface() {
     local interface="$1"
 
     # Try HTTP check first (proves DNS + TCP + HTTP all work)
-    # Using http (not https) to a known endpoint for speed
-    if curl --interface "$interface" -s -o /dev/null -m 5 -w "%{http_code}" "http://connectivitycheck.gstatic.com/generate_204" 2>/dev/null | grep -q "204"; then
+    # Using -4 to force IPv4 (IPv6 often unreachable and causes delays)
+    if curl -4 --interface "$interface" -s -o /dev/null -m 5 -w "%{http_code}" "http://connectivitycheck.gstatic.com/generate_204" 2>/dev/null | grep -q "204"; then
         return 0  # Full HTTP connectivity works
     fi
 
     # Fallback to HTTPS check (in case HTTP is blocked)
-    if curl --interface "$interface" -s -o /dev/null -m 5 "https://1.1.1.1" 2>/dev/null; then
+    if curl -4 --interface "$interface" -s -o /dev/null -m 5 "https://1.1.1.1" 2>/dev/null; then
         return 0  # HTTPS to IP works (bypasses DNS)
     fi
 
