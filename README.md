@@ -17,16 +17,26 @@ Home network monitoring system for Raspberry Pi. Monitors WiFi, 4G, and power ou
 │                  Raspberry Pi Zero 2W                   │
 ├─────────────────────────────────────────────────────────┤
 │  wlan0 (WiFi) ───► Home Network                         │
-│  eth0 (Ethernet) ─► 4G Modem                            │
+│  eth0 (Ethernet) ─► 4G Modem (USB adapter)              │
 ├─────────────────────────────────────────────────────────┤
 │  rita-watchdog.timer (every 60s)                        │
-│  ├── Check WiFi connectivity (ping via wlan0)           │
-│  ├── Check 4G connectivity (ping via eth0)              │
-│  ├── Send POWER heartbeat (tries 4G, fallback WiFi)     │
+│  ├── Check WiFi connectivity (HTTP check via wlan0)     │
+│  ├── Check 4G connectivity (HTTP check via eth0)        │
+│  ├── Send POWER heartbeat (tries 4G → WiFi → auto)      │
 │  ├── Send WIFI heartbeat (if WiFi up)                   │
 │  └── Send 4G heartbeat (if 4G up)                       │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### Connectivity Checks
+
+The script uses HTTP requests (not ICMP ping) to verify connectivity, which is more reliable:
+
+1. **Primary**: HTTP to `connectivitycheck.gstatic.com` (Google's 204 endpoint)
+2. **Fallback**: HTTPS to `1.1.1.1` (Cloudflare, bypasses DNS)
+3. **Last resort**: ICMP ping to `8.8.8.8`
+
+All requests use `-4` flag to force IPv4 (IPv6 often fails on home networks).
 
 ## How Alerts Work
 
@@ -47,6 +57,7 @@ Home network monitoring system for Raspberry Pi. Monitors WiFi, 4G, and power ou
 
 1. Clone this repo on your Pi:
    ```bash
+   cd ~
    git clone https://github.com/pipeabellos/rita-watchdog.git
    cd rita-watchdog
    ```
@@ -71,9 +82,20 @@ Home network monitoring system for Raspberry Pi. Monitors WiFi, 4G, and power ou
    # Update WIFI_CONNECTION_NAME in config.env
    ```
 
-5. Run the installer:
+5. Create symlink and install systemd services:
    ```bash
-   sudo bash install.sh
+   # Symlink so git pull auto-updates the running version
+   sudo ln -s ~/rita-watchdog /opt/rita-watchdog
+
+   # Make script executable
+   chmod +x monitor.sh
+
+   # Install systemd timer
+   sudo cp rita-watchdog.service /etc/systemd/system/
+   sudo cp rita-watchdog.timer /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable rita-watchdog.timer
+   sudo systemctl start rita-watchdog.timer
    ```
 
 ## Usage
@@ -111,11 +133,49 @@ Edit `config.env` (or `/opt/rita-watchdog/config.env` after install):
 
 ## Updating
 
+With the symlink setup, updates are simple:
+
 ```bash
 cd ~/rita-watchdog
 git pull
-sudo bash install.sh
 ```
+
+The running version is automatically updated (no reinstall needed).
+
+## Troubleshooting
+
+### Viewing logs
+```bash
+# Recent logs
+tail -50 /var/log/rita-watchdog.log
+
+# Watch live
+tail -f /var/log/rita-watchdog.log
+
+# Search for failures
+grep -a "Warning\|Failed\|DOWN" /var/log/rita-watchdog.log | tail -20
+```
+
+### Log has binary content
+If `grep` says "binary file matches", use:
+```bash
+strings /var/log/rita-watchdog.log | grep "pattern"
+```
+
+### Curl exit codes
+When heartbeats fail, the log shows curl exit codes:
+- `6` = DNS resolution failed
+- `7` = Connection refused
+- `28` = Timeout
+- `35` = SSL/TLS error
+
+### Common issues
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| WiFi UP but heartbeat fails | IPv6 timeout | Ensure `-4` flag in curl commands |
+| All heartbeats fail | No network connectivity | Check both interfaces manually |
+| Timer not running | systemd issue | `sudo systemctl restart rita-watchdog.timer` |
 
 ## License
 
