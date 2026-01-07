@@ -13,6 +13,19 @@ Home network monitoring system running on a Raspberry Pi Zero 2W. Sends heartbea
 - **wlan0** - WiFi connected to home network ("ALTA LOMA - 2.4G")
 - **eth0** - USB Ethernet adapter connected to 4G modem
 
+## Network Configuration (Critical!)
+
+**The 4G modem MUST be on a different subnet than WiFi to avoid routing conflicts.**
+
+| Interface | Subnet | Gateway | Metric |
+|-----------|--------|---------|--------|
+| wlan0 (WiFi) | 192.168.**1**.0/24 | 192.168.**1**.1 | 200 |
+| eth0 (4G) | 192.168.**2**.0/24 | 192.168.**2**.1 | 100 |
+
+If both use the same subnet (e.g., both 192.168.1.x), the Pi can't properly failover between interfaces and heartbeats will fail even when one connection is working.
+
+To verify: `ip route show` should show different gateways for each interface.
+
 ## File Structure
 
 ```

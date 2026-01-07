@@ -53,6 +53,41 @@ All requests use `-4` flag to force IPv4 (IPv6 often fails on home networks).
 - USB Ethernet adapter connected to 4G modem
 - UptimeRobot account (free tier works) with 3 heartbeat monitors
 
+## Network Setup (Important!)
+
+**The 4G modem MUST be on a different subnet than your home WiFi network.**
+
+If both networks use the same subnet (e.g., both 192.168.1.x), routing will break and failover won't work properly.
+
+### Correct Setup
+
+| Interface | Network | Gateway | Purpose |
+|-----------|---------|---------|---------|
+| wlan0 (WiFi) | 192.168.**1**.x | 192.168.**1**.1 | Home network |
+| eth0 (4G) | 192.168.**2**.x | 192.168.**2**.1 | 4G backup |
+
+### How to Configure
+
+1. Access your 4G modem's admin panel (usually http://192.168.1.1 when connected via eth0)
+2. Find LAN/DHCP settings
+3. Change the LAN IP from `192.168.1.1` to `192.168.2.1`
+4. Save and reconnect
+
+### Verify Setup
+
+```bash
+# Check routing table - should show DIFFERENT subnets
+ip route show
+
+# Expected output:
+# default via 192.168.2.1 dev eth0 ... metric 100
+# default via 192.168.1.1 dev wlan0 ... metric 200
+# 192.168.1.0/24 dev wlan0 ...
+# 192.168.2.0/24 dev eth0 ...
+```
+
+If both routes show the same gateway (e.g., both 192.168.1.1), fix the 4G modem's LAN subnet.
+
 ## Installation
 
 1. Clone this repo on your Pi:
