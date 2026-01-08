@@ -30,11 +30,11 @@ To verify: `ip route show` should show different gateways for each interface.
 
 ```
 ~/rita-watchdog/          # Git repo on Pi (and local Mac)
-├── monitor.sh            # Main monitoring script (runs every 60s)
+├── monitor.sh            # Main monitoring script (runs every 5 min)
 ├── config.env            # Heartbeat URLs and settings (NOT in git)
 ├── config.env.example    # Template for config
 ├── rita-watchdog.service # systemd service
-├── rita-watchdog.timer   # systemd timer (triggers every 60s)
+├── rita-watchdog.timer   # systemd timer (triggers every 5 min / 300s)
 ├── install.sh            # Legacy installer (not needed with symlink)
 └── README.md
 
@@ -82,10 +82,18 @@ This is more reliable because ping can succeed when HTTP fails (different protoc
 ```
 1. Check WiFi (HTTP check via wlan0) → wifi_up=true/false
 2. Check 4G (HTTP check via eth0) → fourg_up=true/false
-3. Send Power heartbeat (if any connection up) - tries 4G → WiFi → auto
-4. Send WiFi heartbeat (only if wifi_up)
-5. Send 4G heartbeat (only if fourg_up)
+3. Send Power heartbeat (if any connection up) - skips known-down interfaces
+4. Send WiFi heartbeat (only if wifi_up) - skips known-down interfaces
+5. Send 4G heartbeat (only if fourg_up) - skips known-down interfaces
 ```
+
+### Timeouts
+- **Connectivity check**: 5s per method (HTTP, HTTPS, ping)
+- **Heartbeat curl**: 5s per attempt
+- **Max runtime**: ~45s worst case (fits in 5 min interval)
+
+### Smart Interface Skipping
+The script passes interface status to `send_heartbeat()` so it skips interfaces already known to be down. This prevents wasting time on curl timeouts for dead interfaces.
 
 ## Debugging Commands
 
@@ -133,9 +141,11 @@ When heartbeats fail, logs show exit codes:
 
 ## UptimeRobot Settings
 
-- **Power Monitor**: 5 min check interval (detects prolonged outages)
-- **WiFi Monitor**: 2 min check interval
-- **4G Monitor**: 2 min check interval
+- **Power Monitor**: 10 min check interval
+- **WiFi Monitor**: 10 min check interval
+- **4G Monitor**: 10 min check interval
+
+Script sends heartbeats every 5 min, so 10 min interval = alert after 2 missed heartbeats (~10-15 min detection time).
 
 ## Config File Location
 

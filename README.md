@@ -19,7 +19,7 @@ Home network monitoring system for Raspberry Pi. Monitors WiFi, 4G, and power ou
 │  wlan0 (WiFi) ───► Home Network                         │
 │  eth0 (Ethernet) ─► 4G Modem (USB adapter)              │
 ├─────────────────────────────────────────────────────────┤
-│  rita-watchdog.timer (every 60s)                        │
+│  rita-watchdog.timer (every 5 min)                      │
 │  ├── Check WiFi connectivity (HTTP check via wlan0)     │
 │  ├── Check 4G connectivity (HTTP check via eth0)        │
 │  ├── Send POWER heartbeat (tries 4G → WiFi → auto)      │
@@ -108,10 +108,11 @@ If both routes show the same gateway (e.g., both 192.168.1.1), fix the 4G modem'
 
 3. Set up UptimeRobot:
    - Create 3 "Heartbeat" monitors at [uptimerobot.com](https://uptimerobot.com):
-     - Power Monitor (5 min interval)
-     - WiFi Monitor (2 min interval)
-     - 4G Monitor (2 min interval)
+     - Power Monitor (10 min interval)
+     - WiFi Monitor (10 min interval)
+     - 4G Monitor (10 min interval)
    - Copy each heartbeat URL into your `config.env`
+   - Note: Script sends heartbeats every 5 min, so 10 min interval = alert after 2 missed beats
 
 4. Update WiFi connection name:
    ```bash

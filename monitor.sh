@@ -20,33 +20,42 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 
-# Send heartbeat via any available interface
+# Send heartbeat using known-good interfaces first
+# Args: url, name, prefer_4g (true/false), prefer_wifi (true/false)
 send_heartbeat() {
     local url="$1"
     local name="$2"
+    local prefer_4g="${3:-true}"
+    local prefer_wifi="${4:-true}"
     local curl_exit_code
 
-    # Try 4G first (fast timeout), then WiFi, then any route
     # Using -4 to force IPv4 (IPv6 often unreachable and causes delays)
     # Exit codes: 6=DNS fail, 7=connect fail, 28=timeout, 35=SSL error
 
-    curl -4 --interface "$FOURG_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
-    curl_exit_code=$?
-    if [ $curl_exit_code -eq 0 ]; then
-        log "$name heartbeat sent via $FOURG_INTERFACE"
-        return 0
+    # Try 4G first if it was UP during connectivity check
+    if [ "$prefer_4g" = true ]; then
+        curl -4 --interface "$FOURG_INTERFACE" -s -o /dev/null -m 5 "$url" 2>/dev/null
+        curl_exit_code=$?
+        if [ $curl_exit_code -eq 0 ]; then
+            log "$name heartbeat sent via $FOURG_INTERFACE"
+            return 0
+        fi
+        log "$name heartbeat via $FOURG_INTERFACE failed (curl: $curl_exit_code)"
     fi
-    log "$name heartbeat via $FOURG_INTERFACE failed (curl: $curl_exit_code)"
 
-    curl -4 --interface "$WIFI_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
-    curl_exit_code=$?
-    if [ $curl_exit_code -eq 0 ]; then
-        log "$name heartbeat sent via $WIFI_INTERFACE"
-        return 0
+    # Try WiFi if it was UP
+    if [ "$prefer_wifi" = true ]; then
+        curl -4 --interface "$WIFI_INTERFACE" -s -o /dev/null -m 5 "$url" 2>/dev/null
+        curl_exit_code=$?
+        if [ $curl_exit_code -eq 0 ]; then
+            log "$name heartbeat sent via $WIFI_INTERFACE"
+            return 0
+        fi
+        log "$name heartbeat via $WIFI_INTERFACE failed (curl: $curl_exit_code)"
     fi
-    log "$name heartbeat via $WIFI_INTERFACE failed (curl: $curl_exit_code)"
 
-    curl -4 -s -o /dev/null -m 10 "$url" 2>/dev/null
+    # Last resort: auto-route (let kernel decide)
+    curl -4 -s -o /dev/null -m 5 "$url" 2>/dev/null
     curl_exit_code=$?
     if [ $curl_exit_code -eq 0 ]; then
         log "$name heartbeat sent via auto-route"
@@ -139,24 +148,25 @@ main() {
     fi
 
     # Send POWER heartbeat (always try - proves Pi is alive)
+    # Pass interface status to skip known-down interfaces
     if [ "$fourg_up" = true ] || [ "$wifi_up" = true ]; then
-        send_heartbeat "$POWER_HEARTBEAT_URL" "Power"
+        send_heartbeat "$POWER_HEARTBEAT_URL" "Power" "$fourg_up" "$wifi_up"
     else
         log "ERROR: No internet connection available"
     fi
 
     # Send WIFI heartbeat (only if WiFi is working)
     if [ "$wifi_up" = true ]; then
-        send_heartbeat "$WIFI_HEARTBEAT_URL" "WiFi"
+        send_heartbeat "$WIFI_HEARTBEAT_URL" "WiFi" "$fourg_up" "$wifi_up"
     else
-        log "WiFi is DOWN - skipping WiFi heartbeat"
+        log "Skipping WiFi heartbeat (WiFi DOWN)"
     fi
 
     # Send 4G heartbeat (only if 4G is working)
     if [ "$fourg_up" = true ]; then
-        send_heartbeat "$FOURG_HEARTBEAT_URL" "4G"
+        send_heartbeat "$FOURG_HEARTBEAT_URL" "4G" "$fourg_up" "$wifi_up"
     else
-        log "4G is DOWN - skipping 4G heartbeat"
+        log "Skipping 4G heartbeat (4G DOWN)"
     fi
 
     log "=== Check complete ==="
