@@ -28,12 +28,15 @@ send_heartbeat() {
 
     # Try 4G first (fast timeout), then WiFi, then any route
     # Using -4 to force IPv4 (IPv6 often unreachable and causes delays)
+    # Exit codes: 6=DNS fail, 7=connect fail, 28=timeout, 35=SSL error
+
     curl -4 --interface "$FOURG_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
     curl_exit_code=$?
     if [ $curl_exit_code -eq 0 ]; then
         log "$name heartbeat sent via $FOURG_INTERFACE"
         return 0
     fi
+    log "$name heartbeat via $FOURG_INTERFACE failed (curl: $curl_exit_code)"
 
     curl -4 --interface "$WIFI_INTERFACE" -s -o /dev/null -m 10 "$url" 2>/dev/null
     curl_exit_code=$?
@@ -41,6 +44,7 @@ send_heartbeat() {
         log "$name heartbeat sent via $WIFI_INTERFACE"
         return 0
     fi
+    log "$name heartbeat via $WIFI_INTERFACE failed (curl: $curl_exit_code)"
 
     curl -4 -s -o /dev/null -m 10 "$url" 2>/dev/null
     curl_exit_code=$?
@@ -48,34 +52,39 @@ send_heartbeat() {
         log "$name heartbeat sent via auto-route"
         return 0
     fi
+    log "$name heartbeat via auto-route failed (curl: $curl_exit_code)"
 
-    # Log failure with curl exit code for debugging
-    # Exit codes: 6=DNS fail, 7=connect fail, 28=timeout, 35=SSL error
-    log "Warning: Failed to send $name heartbeat (curl exit: $curl_exit_code)"
+    log "Warning: ALL attempts to send $name heartbeat FAILED"
     return 1
 }
 
 # Check connectivity on specific interface using HTTP (more reliable than ping)
+# Returns: 0=connected, 1=down
+# Sets CHECK_METHOD to indicate how connectivity was verified
 check_interface() {
     local interface="$1"
 
     # Try HTTP check first (proves DNS + TCP + HTTP all work)
     # Using -4 to force IPv4 (IPv6 often unreachable and causes delays)
     if curl -4 --interface "$interface" -s -o /dev/null -m 5 -w "%{http_code}" "http://connectivitycheck.gstatic.com/generate_204" 2>/dev/null | grep -q "204"; then
+        CHECK_METHOD="http"
         return 0  # Full HTTP connectivity works
     fi
 
     # Fallback to HTTPS check (in case HTTP is blocked)
     if curl -4 --interface "$interface" -s -o /dev/null -m 5 "https://1.1.1.1" 2>/dev/null; then
+        CHECK_METHOD="https-ip"
         return 0  # HTTPS to IP works (bypasses DNS)
     fi
 
     # Last resort: ping (ICMP might work when HTTP doesn't, but less useful)
     if ping -c 2 -W 3 -I "$interface" "$CHECK_HOST" > /dev/null 2>&1; then
+        CHECK_METHOD="ping-only"
         log "Warning: $interface ping works but HTTP failed - connectivity may be degraded"
         return 0  # Partial connectivity
     fi
 
+    CHECK_METHOD="none"
     return 1  # Interface down
 }
 
@@ -109,12 +118,12 @@ main() {
 
     # Check WiFi connectivity
     if check_interface "$WIFI_INTERFACE"; then
-        log "WiFi is UP"
+        log "WiFi is UP (check: $CHECK_METHOD)"
         wifi_up=true
     else
         log "WiFi is DOWN - attempting reconnect"
         if reconnect_wifi && check_interface "$WIFI_INTERFACE"; then
-            log "WiFi recovered after reconnect"
+            log "WiFi recovered after reconnect (check: $CHECK_METHOD)"
             wifi_up=true
         else
             log "WiFi still DOWN"
@@ -123,7 +132,7 @@ main() {
 
     # Check 4G connectivity
     if check_interface "$FOURG_INTERFACE"; then
-        log "4G is UP"
+        log "4G is UP (check: $CHECK_METHOD)"
         fourg_up=true
     else
         log "4G is DOWN"

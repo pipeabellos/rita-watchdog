@@ -46,6 +46,9 @@ All requests use `-4` flag to force IPv4 (IPv6 often fails on home networks).
 | 4G down, WiFi up | 4G heartbeat stops → UptimeRobot alerts |
 | Both down | Power heartbeat stops → UptimeRobot alerts |
 | Pi loses power | All heartbeats stop → UptimeRobot alerts |
+| ISP routing issues | WiFi UP but can't reach UptimeRobot → Power alert (false alarm) |
+
+**Note**: A Power alert doesn't always mean power loss. It means heartbeats couldn't be delivered through ANY interface. See [Troubleshooting](#important-power-monitor-false-alarms) for details.
 
 ## Requirements
 
@@ -208,9 +211,36 @@ When heartbeats fail, the log shows curl exit codes:
 
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
+| WiFi UP but heartbeat fails | ISP can't reach UptimeRobot | Wait for ISP to fix routing; 4G backup should help |
 | WiFi UP but heartbeat fails | IPv6 timeout | Ensure `-4` flag in curl commands |
 | All heartbeats fail | No network connectivity | Check both interfaces manually |
 | Timer not running | systemd issue | `sudo systemctl restart rita-watchdog.timer` |
+
+### Important: Power Monitor False Alarms
+
+The Power monitor going down does NOT always mean power loss. It means **no heartbeats could be delivered**.
+
+**Scenario**: WiFi shows "UP" but Power monitor goes down
+- Connectivity check passes (can reach Google)
+- But heartbeat fails (can't reach UptimeRobot)
+- If 4G is also down, ALL heartbeats fail → Power monitor alert
+
+**Why this happens**: The connectivity check tests `connectivitycheck.gstatic.com` (Google), but heartbeats go to `heartbeat.uptimerobot.com`. Your ISP may have routing issues to UptimeRobot while Google works fine.
+
+**How to verify**: Check logs for:
+```bash
+grep -a "heartbeat.*failed" /var/log/rita-watchdog.log | tail -20
+```
+
+Look for patterns like:
+```
+WiFi is UP (check: http)
+Power heartbeat via eth0 failed (curl: 7)
+Power heartbeat via wlan0 failed (curl: 28)
+Warning: ALL attempts to send Power heartbeat FAILED
+```
+
+This means WiFi connectivity check passed but heartbeat delivery failed.
 
 ## License
 
