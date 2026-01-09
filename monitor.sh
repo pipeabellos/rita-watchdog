@@ -34,8 +34,8 @@ send_heartbeat() {
 
     # Try 4G first if it was UP during connectivity check
     if [ "$prefer_4g" = true ]; then
-        curl -4 --interface "$FOURG_INTERFACE" -s -o /dev/null -m 5 "$url" 2>/dev/null
-        curl_exit_code=$?
+        curl_exit_code=0
+        curl -4 --interface "$FOURG_INTERFACE" -s -o /dev/null -m 5 "$url" 2>/dev/null || curl_exit_code=$?
         if [ $curl_exit_code -eq 0 ]; then
             log "$name heartbeat sent via $FOURG_INTERFACE"
             return 0
@@ -45,8 +45,8 @@ send_heartbeat() {
 
     # Try WiFi if it was UP
     if [ "$prefer_wifi" = true ]; then
-        curl -4 --interface "$WIFI_INTERFACE" -s -o /dev/null -m 5 "$url" 2>/dev/null
-        curl_exit_code=$?
+        curl_exit_code=0
+        curl -4 --interface "$WIFI_INTERFACE" -s -o /dev/null -m 5 "$url" 2>/dev/null || curl_exit_code=$?
         if [ $curl_exit_code -eq 0 ]; then
             log "$name heartbeat sent via $WIFI_INTERFACE"
             return 0
@@ -55,8 +55,8 @@ send_heartbeat() {
     fi
 
     # Last resort: auto-route (let kernel decide)
-    curl -4 -s -o /dev/null -m 5 "$url" 2>/dev/null
-    curl_exit_code=$?
+    curl_exit_code=0
+    curl -4 -s -o /dev/null -m 5 "$url" 2>/dev/null || curl_exit_code=$?
     if [ $curl_exit_code -eq 0 ]; then
         log "$name heartbeat sent via auto-route"
         return 0
@@ -64,7 +64,7 @@ send_heartbeat() {
     log "$name heartbeat via auto-route failed (curl: $curl_exit_code)"
 
     log "Warning: ALL attempts to send $name heartbeat FAILED"
-    return 1
+    return 0  # Don't fail the script, just log the warning
 }
 
 # Check connectivity on specific interface using HTTP (more reliable than ping)
