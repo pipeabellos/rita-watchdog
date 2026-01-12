@@ -147,6 +147,23 @@ When heartbeats fail, logs show exit codes:
 
 Script sends heartbeats every 5 min, so 10 min interval = alert after 2 missed heartbeats (~10-15 min detection time).
 
+## DNS Configuration (Important!)
+
+WiFi must use the home router's DNS, NOT the 4G modem's DNS. Otherwise when 4G is down, DNS queries hang waiting for the unreachable 4G modem, causing all heartbeats to timeout.
+
+**Verify DNS is correct:**
+```bash
+cat /etc/resolv.conf
+# Should show 192.168.1.1 (home router) first, NOT 192.168.2.1 (4G modem)
+```
+
+**Fix if needed:**
+```bash
+sudo nmcli connection modify "ALTA LOMA - 2.4G" ipv4.dns "192.168.1.1 8.8.8.8"
+sudo nmcli connection modify "ALTA LOMA - 2.4G" ipv4.dns-priority -10
+sudo nmcli connection down "ALTA LOMA - 2.4G" && sudo nmcli connection up "ALTA LOMA - 2.4G"
+```
+
 ## Config File Location
 
 The `config.env` file contains heartbeat URLs and is NOT in git (sensitive).
